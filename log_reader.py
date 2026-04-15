@@ -1,8 +1,6 @@
 import os
 import time
-from sqlalchemy.orm import Session
-from db import SessionLocal
-from parser import parse_log_line
+from parser import parse_log_line, prune_old_data
 
 LOG_FILE_PATH = "/usr/local/x-ui/access.log"
 STATE_FILE = "last_pos.txt"
@@ -25,7 +23,7 @@ def read_new_logs():
     Читает новые строки из лог-файла.
     """
     if not os.path.exists(LOG_FILE_PATH):
-        print(f"Log file {LOG_FILE_PATH} not found.")
+        # Если файла нет, возвращаем управление
         return
 
     last_pos = get_last_position()
@@ -38,18 +36,16 @@ def read_new_logs():
     if file_size == last_pos:
         return
 
-    db = SessionLocal()
     try:
-        # Удаляем старые логи
-        from parser import prune_old_data
-        prune_old_data(db)
+        # Удаляем старые логи из CSV
+        prune_old_data()
 
         with open(LOG_FILE_PATH, "r", encoding="utf-8", errors="ignore") as f:
             f.seek(last_pos)
             for line in f:
                 if line.strip():
-                    parse_log_line(line, db)
+                    parse_log_line(line)
             
             save_last_position(f.tell())
-    finally:
-        db.close()
+    except Exception as e:
+        print(f"Error reading logs: {e}")

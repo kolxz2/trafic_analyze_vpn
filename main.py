@@ -1,36 +1,27 @@
-"""
-API Endpoints:
-- GET /              : Главная страница (интерфейс)
-- GET /stats         : Получение статистики по доменам (с фильтрацией и сортировкой)
-- GET /lists         : Получение списков direct и proxy
-- POST /lists        : Добавление домена в список (direct или proxy)
-- DELETE /lists/{d}  : Удаление домена из списков
-- GET /download/{f}  : Скачивание файлов (logs.csv, direct.txt, proxy.txt)
-"""
 import os
 import asyncio
 import csv
 import io
 from datetime import datetime, timedelta
-from typing import List, Optional
-from fastapi import FastAPI, UploadFile, File, Depends, HTTPException, Query
+from typing import List, Optional, Dict, Set
+from fastapi import FastAPI, UploadFile, File, HTTPException, Query
 from fastapi.responses import HTMLResponse, Response, FileResponse
-from sqlalchemy.orm import Session
-from sqlalchemy import func, distinct
+from collections import defaultdict
 
-import db
-import models
-import parser
-import report
 from log_reader import read_new_logs
 
-app = FastAPI(title="Xray Traffic Analyzer Pro", description="Анализ логов и управление списками")
+app = FastAPI(title="Xray Traffic Analyzer Pro", description="Анализ логов и управление списками (No-DB version)")
 
-# Инициализация БД при запуске
+CSV_LOG_FILE = "logs.csv"
+
+# Фоновая задача чтения логов
 @app.on_event("startup")
 async def startup_event():
-    db.init_db()
-    # Фоновая задача чтения логов
+    # Создаем файлы списков если их нет
+    for f in ["direct.txt", "proxy.txt"]:
+        if not os.path.exists(f):
+            with open(f, "w") as file: pass
+    
     asyncio.create_task(background_log_reader())
 
 async def background_log_reader():
@@ -41,89 +32,125 @@ async def background_log_reader():
             print(f"Error reading logs: {e}")
         await asyncio.sleep(60)
 
-# --- Управление списками ---
+# --- Управление списками (Файловая реализация) ---
 
-def sync_lists_to_files(database: Session):
-    """Синхронизирует БД с текстовыми файлами."""
-    for list_type in ["direct", "proxy"]:
-        domains = database.query(models.DomainList).filter(models.DomainList.list_type == list_type).all()
-        with open(f"{list_type}.txt", "w", encoding="utf-8") as f:
-            for d in domains:
-                f.write(f"{d.domain}\n")
+def load_list(list_type: str) -> Set[str]:
+    filename = f"{list_type}.txt"
+    if not os.path.exists(filename):
+        return set()
+    with open(filename, "r", encoding="utf-8") as f:
+        return {line.strip() for line in f if line.strip()}
+
+def save_list(list_type: str, domains: Set[str]):
+    with open(f"{list_type}.txt", "w", encoding="utf-8") as f:
+        for d in sorted(list(domains)):
+            f.write(f"{d}\n")
 
 @app.get("/lists")
-def get_lists(database: Session = Depends(db.get_db)):
-    direct = database.query(models.DomainList).filter(models.DomainList.list_type == "direct").all()
-    proxy = database.query(models.DomainList).filter(models.DomainList.list_type == "proxy").all()
+def get_lists():
     return {
-        "direct": [d.domain for d in direct],
-        "proxy": [d.domain for d in proxy]
+        "direct": list(load_list("direct")),
+        "proxy": list(load_list("proxy"))
     }
 
 @app.post("/lists")
-async def add_to_list(domain: str, list_type: str, database: Session = Depends(db.get_db)):
+async def add_to_list(domain: str, list_type: str):
     if list_type not in ["direct", "proxy"]:
         raise HTTPException(status_code=400, detail="Invalid list type")
     
-    # Удаляем из другого списка если есть
-    database.query(models.DomainList).filter(models.DomainList.domain == domain).delete()
-    
-    new_item = models.DomainList(domain=domain, list_type=list_type)
-    database.add(new_item)
-    database.commit()
-    sync_lists_to_files(database)
+    direct = load_list("direct")
+    proxy = load_list("proxy")
+
+    # Удаляем из обоих на всякий случай
+    if domain in direct: direct.remove(domain)
+    if domain in proxy: proxy.remove(domain)
+
+    # Добавляем в нужный
+    if list_type == "direct":
+        direct.add(domain)
+    else:
+        proxy.add(domain)
+
+    save_list("direct", direct)
+    save_list("proxy", proxy)
     return {"status": "success"}
 
 @app.delete("/lists/{domain}")
-async def remove_from_list(domain: str, database: Session = Depends(db.get_db)):
-    database.query(models.DomainList).filter(models.DomainList.domain == domain).delete()
-    database.commit()
-    sync_lists_to_files(database)
+async def remove_from_list(domain: str):
+    direct = load_list("direct")
+    proxy = load_list("proxy")
+
+    if domain in direct: direct.remove(domain)
+    if domain in proxy: proxy.remove(domain)
+
+    save_list("direct", direct)
+    save_list("proxy", proxy)
     return {"status": "success"}
 
-# --- Статистика ---
+# --- Статистика (Агрегация из CSV) ---
 
 @app.get("/stats")
 def get_stats(
     only_new: bool = False, 
     sort_by: str = "count", 
-    limit: int = 100, 
-    database: Session = Depends(db.get_db)
+    limit: int = 100
 ):
     """
-    Получение статистики по доменам.
+    Получение статистики по доменам из CSV.
     sort_by: 'count' (запросы) или 'users' (кол-во уникальных email)
     """
-    # Список уже распределенных доменов
-    distributed = database.query(models.DomainList.domain).all()
-    distributed_domains = [d[0] for d in distributed]
+    direct = load_list("direct")
+    proxy = load_list("proxy")
+    distributed_domains = direct.union(proxy)
 
-    query = database.query(
-        models.LogEntry.domain,
-        func.count(models.LogEntry.id).label("total_count"),
-        func.count(distinct(models.LogEntry.email)).label("user_count"),
-        func.max(models.LogEntry.timestamp).label("last_seen")
-    ).group_by(models.LogEntry.domain)
+    if not os.path.exists(CSV_LOG_FILE):
+        return []
 
-    if only_new:
-        query = query.filter(models.LogEntry.domain.notin_(distributed_domains))
+    # domain -> {count, users: set, last_seen}
+    stats = defaultdict(lambda: {"count": 0, "users": set(), "last_seen": datetime.min})
 
+    with open(CSV_LOG_FILE, "r", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            domain = row["domain"]
+            
+            if only_new and domain in distributed_domains:
+                continue
+
+            try:
+                ts = datetime.strptime(row["timestamp"], "%Y-%m-%d %H:%M:%S")
+            except:
+                continue
+            
+            email = row.get("email", "system")
+            
+            stats[domain]["count"] += 1
+            stats[domain]["users"].add(email)
+            if ts > stats[domain]["last_seen"]:
+                stats[domain]["last_seen"] = ts
+
+    # Подготовка результатов
+    results = []
+    for domain, data in stats.items():
+        status = "new"
+        if domain in direct: status = "direct"
+        elif domain in proxy: status = "proxy"
+
+        results.append({
+            "domain": domain,
+            "count": data["count"],
+            "user_count": len(data["users"]),
+            "last_seen": data["last_seen"].strftime("%Y-%m-%d %H:%M:%S"),
+            "status": status
+        })
+
+    # Сортировка
     if sort_by == "users":
-        query = query.order_by(func.count(distinct(models.LogEntry.email)).desc())
+        results.sort(key=lambda x: x["user_count"], reverse=True)
     else:
-        query = query.order_by(func.count(models.LogEntry.id).desc())
+        results.sort(key=lambda x: x["count"], reverse=True)
 
-    results = query.limit(limit).all()
-
-    return [
-        {
-            "domain": r[0],
-            "count": r[1],
-            "user_count": r[2],
-            "last_seen": r[3],
-            "status": "new" if r[0] not in distributed_domains else ("direct" if r[0] in [d.domain for d in database.query(models.DomainList).filter(models.DomainList.list_type=="direct").all()] else "proxy")
-        } for r in results
-    ]
+    return results[:limit]
 
 # --- Загрузки ---
 
@@ -134,13 +161,14 @@ async def download_file(filename: str):
         raise HTTPException(status_code=404)
     
     if not os.path.exists(filename):
-        # Создаем пустой файл если его нет
         with open(filename, "w") as f: pass
         
     return FileResponse(filename, filename=filename)
 
 @app.get("/", response_class=HTMLResponse)
 async def index():
+    if not os.path.exists("index.html"):
+        return HTMLResponse("<h1>Index file not found</h1>", status_code=404)
     with open("index.html", "r", encoding="utf-8") as f:
         return f.read()
 
