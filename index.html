@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Xray Traffic Analyzer Pro</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        :root {
+            --bg-color: #050505;
+            --card-bg: rgba(20, 20, 20, 0.85);
+            --accent-primary: #3b82f6;
+            --accent-direct: #10b981;
+            --accent-proxy: #f59e0b;
+            --text-primary: #ffffff;
+            --text-secondary: #a0a0a0;
+            --glass-border: rgba(255, 255, 255, 0.1);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', sans-serif; }
+        body { background-color: var(--bg-color); color: var(--text-primary); min-height: 100vh; padding: 30px; background-image: radial-gradient(circle at top right, rgba(59, 130, 246, 0.1), transparent); }
+
+        .container { max-width: 1400px; margin: 0 auto; display: flex; flex-direction: column; gap: 25px; }
+
+        header { text-align: left; border-left: 4px solid var(--accent-primary); padding-left: 20px; }
+        h1 { font-family: 'Outfit'; font-size: 2.2rem; letter-spacing: -0.5px; }
+
+        .downloads { display: flex; gap: 12px; }
+        .btn { padding: 8px 16px; border-radius: 8px; border: 1px solid var(--glass-border); font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; transition: 0.2s; background: rgba(255,255,255,0.03); color: white; text-decoration: none; font-size: 0.85rem; }
+        .btn:hover { background: rgba(255,255,255,0.1); transform: translateY(-1px); border-color: var(--accent-primary); }
+
+        .dashboard-grid { display: grid; grid-template-columns: 1fr; gap: 20px; }
+        @media (min-width: 1200px) { .dashboard-grid { grid-template-columns: 1fr 1fr 1fr; } }
+
+        .card { background: var(--card-bg); backdrop-filter: blur(15px); border: 1px solid var(--glass-border); border-radius: 16px; display: flex; flex-direction: column; overflow: hidden; height: 75vh; }
+        .card-header { padding: 15px 20px; border-bottom: 1px solid var(--glass-border); display: flex; justify-content: space-between; align-items: center; }
+        .card-header h2 { font-size: 1.1rem; font-family: 'Outfit'; display: flex; align-items: center; gap: 8px; }
+
+        .table-wrap { overflow-y: auto; flex: 1; }
+        table { width: 100%; border-collapse: collapse; }
+        th { position: sticky; top: 0; background: #111; text-align: left; padding: 12px; color: var(--text-secondary); font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1px; border-bottom: 1px solid var(--glass-border); cursor: pointer; z-index: 10; }
+        th:hover { color: white; }
+        td { padding: 12px; border-bottom: 1px solid var(--glass-border); font-size: 0.85rem; }
+        tr:hover { background: rgba(255,255,255,0.02); }
+
+        .badge-count { background: var(--accent-primary); color: white; padding: 2px 6px; border-radius: 4px; font-weight: 700; font-size: 0.75rem; }
+        .action-btns { display: flex; gap: 4px; }
+        .action-btns button { width: 28px; height: 28px; border-radius: 6px; border: 1px solid var(--glass-border); background: rgba(255,255,255,0.05); color: white; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+        .action-btns button:hover { background: rgba(255,255,255,0.15); border-color: white; }
+
+        .sort-icon { width: 12px; opacity: 0.5; margin-left: 4px; }
+        .active-sort { color: var(--accent-primary); opacity: 1; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <header>
+                <h1>TRAFFIC ANALYZER PRO</h1>
+                <p style="color: var(--text-secondary); font-size: 0.9rem;">Логи за 3 месяца • Умная маршрутизация</p>
+            </header>
+            <div class="downloads">
+                <a href="/download/logs.csv" class="btn"><i data-lucide="file-text"></i> CSV LOGS</a>
+                <a href="/download/direct.txt" class="btn"><i data-lucide="zap"></i> DIRECT.TXT</a>
+                <a href="/download/proxy.txt" class="btn"><i data-lucide="globe"></i> PROXY.TXT</a>
+                <button class="btn" style="background: var(--accent-primary);" onclick="loadAll()">
+                    <i data-lucide="refresh-cw"></i> ОБНОВИТЬ
+                </button>
+            </div>
+        </div>
+
+        <div class="dashboard-grid">
+            <!-- Таблица 1: NEW -->
+            <section class="card">
+                <div class="card-header">
+                    <h2><i data-lucide="help-circle" style="color: var(--accent-primary)"></i> НОВЫЕ / НЕРАЗМЕЧЕННЫЕ</h2>
+                </div>
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Домен</th>
+                                <th onclick="setSort('count')">Запр. <i data-lucide="arrow-down-narrow-wide" class="sort-icon s-count"></i></th>
+                                <th onclick="setSort('users')">Поп. <i data-lucide="users" class="sort-icon s-users"></i></th>
+                                <th>В списки</th>
+                            </tr>
+                        </thead>
+                        <tbody id="table-new"></tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Таблица 2: DIRECT -->
+            <section class="card">
+                <div class="card-header">
+                    <h2 style="color: var(--accent-direct);"><i data-lucide="zap"></i> DIRECT (BYPASS)</h2>
+                </div>
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Домен</th>
+                                <th onclick="setSort('count')">Запр. <i data-lucide="arrow-down-narrow-wide" class="sort-icon s-count"></i></th>
+                                <th onclick="setSort('users')">Поп. <i data-lucide="users" class="sort-icon s-users"></i></th>
+                                <th>Удалить</th>
+                            </tr>
+                        </thead>
+                        <tbody id="table-direct"></tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Таблица 3: PROXY -->
+            <section class="card">
+                <div class="card-header">
+                    <h2 style="color: var(--accent-proxy);"><i data-lucide="shield"></i> PROXY (TUNNEL)</h2>
+                </div>
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Домен</th>
+                                <th onclick="setSort('count')">Запр. <i data-lucide="arrow-down-narrow-wide" class="sort-icon s-count"></i></th>
+                                <th onclick="setSort('users')">Поп. <i data-lucide="users" class="sort-icon s-users"></i></th>
+                                <th>Удалить</th>
+                            </tr>
+                        </thead>
+                        <tbody id="table-proxy"></tbody>
+                    </table>
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <script>
+        lucide.createIcons();
+        let currentSort = 'count';
+
+        async function loadAll() {
+            // Сброс иконок сортировки
+            document.querySelectorAll('.sort-icon').forEach(i => i.classList.remove('active-sort'));
+            document.querySelectorAll('.s-' + currentSort).forEach(i => i.classList.add('active-sort'));
+
+            const res = await fetch(`/stats?limit=500&sort_by=${currentSort}`);
+            const data = await res.json();
+            
+            renderTable('table-new', data.filter(d => d.status === 'new'), true);
+            renderTable('table-direct', data.filter(d => d.status === 'direct'), false);
+            renderTable('table-proxy', data.filter(d => d.status === 'proxy'), false);
+        }
+
+        function renderTable(id, items, isNew) {
+            const tbody = document.getElementById(id);
+            tbody.innerHTML = '';
+            
+            items.forEach(item => {
+                let actionHtml = '';
+                if (isNew) {
+                    actionHtml = `
+                        <div class="action-btns">
+                            <button onclick="addToList('${item.domain}', 'direct')" title="В Direct" style="color: var(--accent-direct)"><i data-lucide="zap" style="width:14px;"></i></button>
+                            <button onclick="addToList('${item.domain}', 'proxy')" title="В Proxy" style="color: var(--accent-proxy)"><i data-lucide="shield" style="width:14px;"></i></button>
+                        </div>
+                    `;
+                } else {
+                    actionHtml = `<button onclick="removeFromList('${item.domain}')" style="background:none; border:none; color: #ef4444; cursor:pointer;"><i data-lucide="trash-2" style="width:14px;"></i></button>`;
+                }
+
+                tbody.insertAdjacentHTML('beforeend', `
+                    <tr>
+                        <td style="word-break: break-all; max-width: 200px;">${item.domain}</td>
+                        <td><span class="badge-count">${item.count}</span></td>
+                        <td>${item.user_count} <i data-lucide="user" style="width:10px; opacity:0.5;"></i></td>
+                        <td>${actionHtml}</td>
+                    </tr>
+                `);
+            });
+            lucide.createIcons();
+        }
+
+        async function addToList(domain, type) {
+            await fetch(`/lists?domain=${domain}&list_type=${type}`, { method: 'POST' });
+            loadAll();
+        }
+
+        async function removeFromList(domain) {
+            await fetch(`/lists/${domain}`, { method: 'DELETE' });
+            loadAll();
+        }
+
+        function setSort(s) {
+            currentSort = s;
+            loadAll();
+        }
+
+        loadAll();
+    </script>
+</body>
+</html>
