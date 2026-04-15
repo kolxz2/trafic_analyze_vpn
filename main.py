@@ -106,8 +106,8 @@ def get_stats(
     if not os.path.exists(CSV_LOG_FILE):
         return []
 
-    # domain -> {count, users: set, last_seen}
-    stats = defaultdict(lambda: {"count": 0, "users": set(), "last_seen": datetime.min})
+    # domain -> {count, users: set, ips: set, last_seen}
+    stats = defaultdict(lambda: {"count": 0, "users": set(), "ips": set(), "last_seen": datetime.min})
 
     with open(CSV_LOG_FILE, "r", encoding="utf-8") as f:
         reader = csv.DictReader(f)
@@ -123,9 +123,12 @@ def get_stats(
                 continue
             
             email = row.get("email", "system")
+            ip = row.get("ip", "")
             
             stats[domain]["count"] += 1
             stats[domain]["users"].add(email)
+            if ip:
+                stats[domain]["ips"].add(ip)
             if ts > stats[domain]["last_seen"]:
                 stats[domain]["last_seen"] = ts
 
@@ -140,6 +143,8 @@ def get_stats(
             "domain": domain,
             "count": data["count"],
             "user_count": len(data["users"]),
+            "users": list(data["users"]),
+            "ips": list(data["ips"]),
             "last_seen": data["last_seen"].strftime("%Y-%m-%d %H:%M:%S"),
             "status": status
         })

@@ -26,7 +26,9 @@ def parse_log_line(line: str, save_to_csv=True):
     email = match_email.group(1) if match_email else "system"
 
     # Резолвим IP если нужно
+    orig_ip = ""
     if PATTERN_IP.match(address):
+        orig_ip = address
         domain = resolve_ip(address)
     else:
         domain = address
@@ -35,15 +37,15 @@ def parse_log_line(line: str, save_to_csv=True):
     
     # Сохраняем в CSV
     if save_to_csv:
-        write_to_csv(now, domain, email)
+        write_to_csv(now, domain, email, orig_ip)
 
-def write_to_csv(timestamp, domain, email):
+def write_to_csv(timestamp, domain, email, ip):
     file_exists = os.path.isfile(CSV_LOG_FILE)
     with open(CSV_LOG_FILE, "a", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
         if not file_exists:
-            writer.writerow(["timestamp", "domain", "email"])
-        writer.writerow([timestamp.strftime("%Y-%m-%d %H:%M:%S"), domain, email])
+            writer.writerow(["timestamp", "domain", "email", "ip"])
+        writer.writerow([timestamp.strftime("%Y-%m-%d %H:%M:%S"), domain, email, ip])
 
 def prune_old_data():
     """

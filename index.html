@@ -49,8 +49,28 @@
         .action-btns button { width: 28px; height: 28px; border-radius: 6px; border: 1px solid var(--glass-border); background: rgba(255,255,255,0.05); color: white; cursor: pointer; display: flex; align-items: center; justify-content: center; }
         .action-btns button:hover { background: rgba(255,255,255,0.15); border-color: white; }
 
-        .sort-icon { width: 12px; opacity: 0.5; margin-left: 4px; }
-        .active-sort { color: var(--accent-primary); opacity: 1; }
+        .sort-icon { width: 12px; opacity: 0.3; margin-left: 4px; transition: 0.2s; }
+        .active-sort { color: var(--accent-primary); opacity: 1; transform: scale(1.2); }
+        
+        .filter-group { display: flex; gap: 15px; align-items: center; }
+        .filter-group label { display: flex; align-items: center; gap: 6px; font-size: 0.75rem; color: var(--text-secondary); cursor: pointer; user-select: none; }
+        .filter-group input { appearance: none; width: 14px; height: 14px; border: 1px solid var(--glass-border); border-radius: 3px; background: rgba(255,255,255,0.05); cursor: pointer; position: relative; }
+        .filter-group input:checked { background: var(--accent-primary); border-color: var(--accent-primary); }
+        .filter-group input:checked::after { content: '✓'; position: absolute; color: white; font-size: 10px; top: 50%; left: 50%; transform: translate(-50%, -50%); }
+        .filter-group label:hover { color: white; }
+
+        .hidden { display: none !important; }
+        
+        .tag-list { display: flex; flex-wrap: wrap; gap: 4px; max-width: 250px; }
+        .tag { font-size: 0.65rem; background: rgba(255,255,255,0.1); padding: 1px 5px; border-radius: 3px; color: var(--text-secondary); border: 1px solid var(--glass-border); }
+        .tag-ip { background: rgba(59, 130, 246, 0.1); color: var(--accent-primary); border-color: rgba(59, 130, 246, 0.2); }
+
+        /* Adjust grid if columns are hidden */
+        .dashboard-grid { 
+            display: grid; 
+            grid-template-columns: repeat(auto-fit, minmax(500px, 1fr)); 
+            gap: 20px; 
+        }
     </style>
 </head>
 <body>
@@ -72,18 +92,22 @@
 
         <div class="dashboard-grid">
             <!-- Таблица 1: NEW -->
-            <section class="card">
+            <section class="card" id="card-new">
                 <div class="card-header">
                     <h2><i data-lucide="help-circle" style="color: var(--accent-primary)"></i> НОВЫЕ / НЕРАЗМЕЧЕННЫЕ</h2>
+                    <div class="filter-group">
+                        <label><input type="checkbox" id="check-direct" checked onchange="updateVisibility()"> DIRECT</label>
+                        <label><input type="checkbox" id="check-proxy" checked onchange="updateVisibility()"> PROXY</label>
+                    </div>
                 </div>
                 <div class="table-wrap">
                     <table>
                         <thead>
                             <tr>
-                                <th>Домен</th>
-                                <th onclick="setSort('count')">Запр. <i data-lucide="arrow-down-narrow-wide" class="sort-icon s-count"></i></th>
-                                <th onclick="setSort('users')">Поп. <i data-lucide="users" class="sort-icon s-users"></i></th>
-                                <th>В списки</th>
+                                <th>Домен / IP</th>
+                                <th onclick="setSort('new', 'count')">Запр. <i data-lucide="arrow-down-narrow-wide" class="sort-icon s-new-count"></i></th>
+                                <th onclick="setSort('new', 'users')">Польз. <i data-lucide="users" class="sort-icon s-new-users"></i></th>
+                                <th>Действие</th>
                             </tr>
                         </thead>
                         <tbody id="table-new"></tbody>
@@ -92,7 +116,7 @@
             </section>
 
             <!-- Таблица 2: DIRECT -->
-            <section class="card">
+            <section class="card" id="card-direct">
                 <div class="card-header">
                     <h2 style="color: var(--accent-direct);"><i data-lucide="zap"></i> DIRECT (BYPASS)</h2>
                 </div>
@@ -100,9 +124,9 @@
                     <table>
                         <thead>
                             <tr>
-                                <th>Домен</th>
-                                <th onclick="setSort('count')">Запр. <i data-lucide="arrow-down-narrow-wide" class="sort-icon s-count"></i></th>
-                                <th onclick="setSort('users')">Поп. <i data-lucide="users" class="sort-icon s-users"></i></th>
+                                <th>Домен / IP</th>
+                                <th onclick="setSort('direct', 'count')">Запр. <i data-lucide="arrow-down-narrow-wide" class="sort-icon s-direct-count"></i></th>
+                                <th onclick="setSort('direct', 'users')">Польз. <i data-lucide="users" class="sort-icon s-direct-users"></i></th>
                                 <th>Удалить</th>
                             </tr>
                         </thead>
@@ -112,7 +136,7 @@
             </section>
 
             <!-- Таблица 3: PROXY -->
-            <section class="card">
+            <section class="card" id="card-proxy">
                 <div class="card-header">
                     <h2 style="color: var(--accent-proxy);"><i data-lucide="shield"></i> PROXY (TUNNEL)</h2>
                 </div>
@@ -120,9 +144,9 @@
                     <table>
                         <thead>
                             <tr>
-                                <th>Домен</th>
-                                <th onclick="setSort('count')">Запр. <i data-lucide="arrow-down-narrow-wide" class="sort-icon s-count"></i></th>
-                                <th onclick="setSort('users')">Поп. <i data-lucide="users" class="sort-icon s-users"></i></th>
+                                <th>Домен / IP</th>
+                                <th onclick="setSort('proxy', 'count')">Запр. <i data-lucide="arrow-down-narrow-wide" class="sort-icon s-proxy-count"></i></th>
+                                <th onclick="setSort('proxy', 'users')">Польз. <i data-lucide="users" class="sort-icon s-proxy-users"></i></th>
                                 <th>Удалить</th>
                             </tr>
                         </thead>
@@ -135,19 +159,45 @@
 
     <script>
         lucide.createIcons();
-        let currentSort = 'count';
+        
+        let tableStates = {
+            'new': { sort: 'count', visible: true },
+            'direct': { sort: 'count', visible: true },
+            'proxy': { sort: 'count', visible: true }
+        };
+        
+        let rawData = [];
 
         async function loadAll() {
-            // Сброс иконок сортировки
-            document.querySelectorAll('.sort-icon').forEach(i => i.classList.remove('active-sort'));
-            document.querySelectorAll('.s-' + currentSort).forEach(i => i.classList.add('active-sort'));
+            // Загружаем побольше данных для клиентской сортировки
+            const res = await fetch(`/stats?limit=2000&sort_by=count`); 
+            rawData = await res.json();
+            renderAll();
+        }
 
-            const res = await fetch(`/stats?limit=500&sort_by=${currentSort}`);
-            const data = await res.json();
+        function renderAll() {
+            // Обновляем иконки сортировки
+            document.querySelectorAll('.sort-icon').forEach(i => i.classList.remove('active-sort'));
+            Object.entries(tableStates).forEach(([type, state]) => {
+                const icon = document.querySelector(`.s-${type}-${state.sort}`);
+                if (icon) icon.classList.add('active-sort');
+            });
+
+            const filterAndSort = (status, sortField) => {
+                let items = rawData.filter(d => d.status === status);
+                if (sortField === 'users') {
+                    items.sort((a, b) => b.user_count - a.user_count);
+                } else {
+                    items.sort((a, b) => b.count - a.count);
+                }
+                return items;
+            };
+
+            renderTable('table-new', filterAndSort('new', tableStates['new'].sort), true);
+            renderTable('table-direct', filterAndSort('direct', tableStates['direct'].sort), false);
+            renderTable('table-proxy', filterAndSort('proxy', tableStates['proxy'].sort), false);
             
-            renderTable('table-new', data.filter(d => d.status === 'new'), true);
-            renderTable('table-direct', data.filter(d => d.status === 'direct'), false);
-            renderTable('table-proxy', data.filter(d => d.status === 'proxy'), false);
+            updateVisibility();
         }
 
         function renderTable(id, items, isNew) {
@@ -169,14 +219,35 @@
 
                 tbody.insertAdjacentHTML('beforeend', `
                     <tr>
-                        <td style="word-break: break-all; max-width: 200px;">${item.domain}</td>
+                        <td style="max-width: 300px;">
+                            <div style="font-weight: 600; margin-bottom: 4px;">${item.domain}</div>
+                            <div class="tag-list">
+                                ${item.ips.map(ip => `<span class="tag tag-ip">${ip}</span>`).join('')}
+                            </div>
+                        </td>
                         <td><span class="badge-count">${item.count}</span></td>
-                        <td>${item.user_count} <i data-lucide="user" style="width:10px; opacity:0.5;"></i></td>
+                        <td>
+                            <div style="font-size: 0.8rem; margin-bottom: 4px;">${item.user_count} <i data-lucide="user" style="width:10px; opacity:0.5;"></i></div>
+                            <div class="tag-list">
+                                ${item.users.map(u => `<span class="tag">${u}</span>`).join('')}
+                            </div>
+                        </td>
                         <td>${actionHtml}</td>
                     </tr>
                 `);
             });
             lucide.createIcons();
+        }
+
+        function updateVisibility() {
+            const showDirect = document.getElementById('check-direct').checked;
+            const showProxy = document.getElementById('check-proxy').checked;
+            
+            document.getElementById('card-direct').classList.toggle('hidden', !showDirect);
+            document.getElementById('card-proxy').classList.toggle('hidden', !showProxy);
+            
+            tableStates['direct'].visible = showDirect;
+            tableStates['proxy'].visible = showProxy;
         }
 
         async function addToList(domain, type) {
@@ -189,9 +260,9 @@
             loadAll();
         }
 
-        function setSort(s) {
-            currentSort = s;
-            loadAll();
+        function setSort(type, field) {
+            tableStates[type].sort = field;
+            renderAll();
         }
 
         loadAll();
