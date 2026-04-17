@@ -65,6 +65,20 @@
         .tag { font-size: 0.65rem; background: rgba(255,255,255,0.1); padding: 1px 5px; border-radius: 3px; color: var(--text-secondary); border: 1px solid var(--glass-border); }
         .tag-ip { background: rgba(59, 130, 246, 0.1); color: var(--accent-primary); border-color: rgba(59, 130, 246, 0.2); }
 
+        .more-badge { font-size: 0.65rem; background: var(--accent-primary); color: white; padding: 1px 5px; border-radius: 3px; cursor: pointer; border: none; font-weight: 600; }
+        .more-badge:hover { opacity: 0.8; }
+
+        /* Modal Styles */
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center; z-index: 1000; opacity: 0; pointer-events: none; transition: 0.3s; }
+        .modal-overlay.active { opacity: 1; pointer-events: all; }
+        .modal-card { background: var(--card-bg); border: 1px solid var(--glass-border); border-radius: 20px; width: 90%; max-width: 600px; max-height: 80vh; display: flex; flex-direction: column; transform: scale(0.9); transition: 0.3s; box-shadow: 0 20px 40px rgba(0,0,0,0.5); }
+        .modal-overlay.active .modal-card { transform: scale(1); }
+        .modal-header { padding: 20px 25px; border-bottom: 1px solid var(--glass-border); display: flex; justify-content: space-between; align-items: center; }
+        .modal-body { padding: 25px; overflow-y: auto; display: flex; flex-direction: column; gap: 20px; }
+        .modal-section-title { font-size: 0.8rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
+        .modal-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; }
+        .modal-item { background: rgba(255,255,255,0.05); padding: 8px 12px; border-radius: 8px; border: 1px solid var(--glass-border); font-size: 0.9rem; color: var(--text-primary); }
+
         /* Adjust grid if columns are hidden */
         .dashboard-grid { 
             display: grid; 
@@ -157,6 +171,26 @@
         </div>
     </div>
 
+    <!-- Modal Details -->
+    <div class="modal-overlay" id="modal-overlay" onclick="hideDetails()">
+        <div class="modal-card" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <h2 id="modal-title" style="font-family: 'Outfit'; font-size: 1.4rem;">domain.com</h2>
+                <button class="btn" onclick="hideDetails()"><i data-lucide="x"></i></button>
+            </div>
+            <div class="modal-body">
+                <div>
+                    <div class="modal-section-title"><i data-lucide="users" style="width:14px;"></i> Пользователи (<span id="modal-user-count">0</span>)</div>
+                    <div id="modal-users" class="modal-grid"></div>
+                </div>
+                <div>
+                    <div class="modal-section-title"><i data-lucide="map-pin" style="width:14px;"></i> IP Адреса (<span id="modal-ip-count">0</span>)</div>
+                    <div id="modal-ips" class="modal-grid"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
         lucide.createIcons();
         
@@ -217,26 +251,58 @@
                     actionHtml = `<button onclick="removeFromList('${item.domain}')" style="background:none; border:none; color: #ef4444; cursor:pointer;"><i data-lucide="trash-2" style="width:14px;"></i></button>`;
                 }
 
+                // Лимит отображаемых тегов
+                const maxTags = 5;
+                const visibleIps = item.ips.slice(0, maxTags);
+                const hiddenIpsCount = item.ips.length - maxTags;
+                
+                const visibleUsers = item.users.slice(0, maxTags);
+                const hiddenUsersCount = item.users.length - maxTags;
+
                 tbody.insertAdjacentHTML('beforeend', `
-                    <tr>
+                    <tr onclick="showDetails('${item.domain}')" style="cursor: pointer;">
                         <td style="max-width: 300px;">
                             <div style="font-weight: 600; margin-bottom: 4px;">${item.domain}</div>
                             <div class="tag-list">
-                                ${item.ips.map(ip => `<span class="tag tag-ip">${ip}</span>`).join('')}
+                                ${visibleIps.map(ip => `<span class="tag tag-ip">${ip}</span>`).join('')}
+                                ${hiddenIpsCount > 0 ? `<span class="more-badge">+${hiddenIpsCount}</span>` : ''}
                             </div>
                         </td>
                         <td><span class="badge-count">${item.count}</span></td>
                         <td>
-                            <div style="font-size: 0.8rem; margin-bottom: 4px;">${item.user_count} <i data-lucide="user" style="width:10px; opacity:0.5;"></i></div>
+                            <div style="font-size: 0.8rem; margin-bottom: 4px; font-weight: 600;">${item.user_count} <i data-lucide="user" style="width:10px; opacity:0.5;"></i></div>
                             <div class="tag-list">
-                                ${item.users.map(u => `<span class="tag">${u}</span>`).join('')}
+                                ${visibleUsers.map(u => `<span class="tag">${u}</span>`).join('')}
+                                ${hiddenUsersCount > 0 ? `<span class="more-badge">+${hiddenUsersCount}</span>` : ''}
                             </div>
                         </td>
-                        <td>${actionHtml}</td>
+                        <td onclick="event.stopPropagation()">${actionHtml}</td>
                     </tr>
                 `);
             });
             lucide.createIcons();
+        }
+
+        function showDetails(domain) {
+            const item = rawData.find(d => d.domain === domain);
+            if (!item) return;
+
+            document.getElementById('modal-title').innerText = domain;
+            document.getElementById('modal-user-count').innerText = item.user_count;
+            document.getElementById('modal-ip-count').innerText = item.ips.length;
+
+            const userContainer = document.getElementById('modal-users');
+            userContainer.innerHTML = item.users.map(u => `<div class="modal-item">${u}</div>`).join('');
+
+            const ipContainer = document.getElementById('modal-ips');
+            ipContainer.innerHTML = item.ips.map(ip => `<div class="modal-item">${ip}</div>`).join('');
+
+            document.getElementById('modal-overlay').classList.add('active');
+            lucide.createIcons();
+        }
+
+        function hideDetails() {
+            document.getElementById('modal-overlay').classList.remove('active');
         }
 
         function updateVisibility() {
